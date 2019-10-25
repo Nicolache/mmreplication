@@ -1,0 +1,24 @@
+database:
+    container_name: maria-container
+    hostname: container-{{ slavecontainername }}
+    image: mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: {{ password }}
+    ports:
+        - "3306:3306"
+    volumes:
+      - ./mysql:/var/lib/mysql
+      - ./mysql-logs:/var/log/mysql
+      - ./root:/root
+      - ./conf.d:/etc/mysql/conf.d
+    command:
+      --log-bin=/var/lib/mysql/mysql-bin.log
+      --server-id={{ slaveid }}
+      --binlog-format=STATEMENT
+      --expire-logs-days=30
+      --max-binlog-size=1024M
+      --max-relay-log-size=100M
+      --relay-log-space-limit=300M
+      --replicate-ignore-db=mysql
+      --replicate-ignore-db=information_schema
+      --replicate-ignore-db=performance_schema

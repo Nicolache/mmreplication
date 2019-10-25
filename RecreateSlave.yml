@@ -1,0 +1,171 @@
+---
+- hosts: 127.0.0.1
+  gather_facts: no
+  tasks:
+  - name: Create a key-pair.
+    shell: yes y | ssh-keygen -q -t rsa -N '' -f ~/id_rsa > /dev/null
+
+
+- hosts: masterip
+  gather_facts: no
+  tasks:
+  - name: Copy additional mariadb config.
+    template:
+      src: masterpos_store.sh.j2
+      dest: /root/{{ masterdockerdirectoryname }}/root/masterpos_store.sh
+      owner: root
+      group: root
+      mode: 0744
+  - name: Block tables for writing, and dump bases.
+    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "FLUSH TABLES WITH READ LOCK; SYSTEM /root/masterpos_store.sh; SYSTEM mysqldump -u root --databases {{ basestodump }} -p{{ password }} > /root/master_dump.sql; UNLOCK TABLES;"
+
+  - name: Install public key on master.
+    environment:
+      no_proxy:
+    authorized_key:
+      user: root
+      key: "{{ lookup('file', '~/id_rsa.pub') }}"
+      state: present
+
+- hosts: slaveip
+  gather_facts: no
+  tasks:
+  - name: Create docker mariadb mounting volumes directory.
+    file:
+      path: /root/{{ slavedockerdirectoryname }}
+      state: directory
+      owner: root
+      group: root
+      mode: 0775
+  - name: Create docker mariadb root user directory to keep console history.
+    file:
+      path: /root/{{ slavedockerdirectoryname }}/root
+      state: directory
+      owner: root
+      group: root
+      mode: 0775
+  - name: conf.d directory.
+    file:
+      path: /root/{{ slavedockerdirectoryname }}/conf.d
+      state: directory
+      owner: root
+      group: root
+      mode: 0775
+  - name: Create docker mariadb logs directory.
+    file:
+      path: /root/{{ slavedockerdirectoryname }}/mysql-logs
+      state: directory
+      owner: root
+      group: root
+      mode: 0775
+  - name: Copy a secret key so slave could do scp from master.
+    copy:
+      src: ~/id_rsa
+      dest: /root/.ssh/id_rsa
+      mode: 0400
+  - name: Copy additional mariadb config.
+    template:
+      src: additionalconfig.cnf.j2
+      dest: /root/{{ slavedockerdirectoryname }}/conf.d/additionalconfig.cnf
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Add host to known_hosts.
+    shell: ssh-keyscan -H {{ masterip }} >> ~/.ssh/known_hosts
+  - name: Copy database from the master host.
+    shell: scp -r root@{{ masterip }}:/root/{{ masterdockerdirectoryname }}/root/master_dump.sql /root/{{ slavedockerdirectoryname }}/root
+  - name: Copy pos file.
+    shell: scp -r root@{{ masterip }}:/root/{{ masterdockerdirectoryname }}/root/pos.txt /root/{{ slavedockerdirectoryname }}/root
+  - name: Copy master binlog name file.
+    shell: scp -r root@{{ masterip }}:/root/{{ masterdockerdirectoryname }}/root/file.txt /root/{{ slavedockerdirectoryname }}/root
+
+  - name: Copy docker-compose.yml template.
+    template:
+      src: docker-compose.yml.j2
+      dest: /root/{{ slavedockerdirectoryname }}/docker-compose.yml
+      owner: root
+      group: root
+      mode: 0644
+  - name: Delete secret key.
+    file:
+      state: absent
+      path: /root/.ssh/id_rsa
+  - name: Create directory to connect docker via proxy.
+    file:
+      path: /etc/systemd/system/docker.service.d/
+      state: directory
+      owner: root
+      group: root
+      mode: 0775
+  - name: Copy https-proxy.conf template.
+    template:
+      src: https-proxy.conf.j2
+      dest: /etc/systemd/system/docker.service.d/https-proxy.conf
+      owner: root
+      group: root
+      mode: 0644
+  - name: Reload systemd.
+    shell: systemctl daemon-reload
+  - name: Reload docker.
+    shell: systemctl restart docker
+
+  - name: run the service defined in my_project's docker-compose.yml
+    docker_compose:
+      project_src: /root/{{ slavedockerdirectoryname }}
+
+  - pause:
+      seconds: 15
+
+  - name: Alter.
+    shell: docker exec -ti $(docker ps -q) mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ password }}';"
+
+  - name: Upload the base.
+    shell: docker exec -ti $(docker ps -q) sh -c 'mysql -p{{ password }} < /root/master_dump.sql'
+
+  - name: Findout master position.
+    shell: cat /root/maria-volumes/root/pos.txt
+    register: master_pos                                                                                                              
+                                                                                                                                      
+  - name: Findout master binlog filename.
+    shell: cat /root/maria-volumes/root/file.txt
+    register: master_file
+
+  - name: Display query.
+    debug:
+      msg: "CHANGE MASTER TO MASTER_HOST = '{{ masterip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['master_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['master_pos']['stdout'] }};"
+
+  - name: Create replication user.
+    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "CREATE USER '{{ replicationuser }}'@'%' IDENTIFIED BY '{{ replicationpassword }}';"
+
+  - name: Flush privileges.
+    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "grant replication slave on *.* to '{{ replicationuser }}'@'%';"
+
+  - name: Set up replication.
+    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "CHANGE MASTER TO MASTER_HOST = '{{ masterip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['master_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['master_pos']['stdout'] }};"
+
+  - name: Start slave
+    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "start slave;"
+
+- hosts: masterip
+  gather_facts: no
+  tasks:
+  - name: Deinstall public key on master.
+    environment:
+      no_proxy:
+    authorized_key:
+      user: root
+      key: "{{ lookup('file', '~/id_rsa.pub') }}"
+      state: absent
+
+- hosts: 127.0.0.1
+  gather_facts: no
+  tasks:
+  - name: Delete secret key on the local machine. (Was used to scp between master and slave.)
+    file:
+      state: absent
+      path: ~/id_rsa
+  - name: Delete public key on the local machine. (Was used to scp between master and slave.)
+    file:
+      state: absent
+      path: ~/id_rsa.pub

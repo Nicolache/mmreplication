@@ -1,0 +1,23 @@
+[masterip]
+XX.XX.XX.XX
+[slaveip]
+YY.YY.YY.YY
+
+[replication:children]
+masterip
+slaveip
+
+[replication:vars]
+password=1
+replicationuser=replicator
+replicationpassword=password
+slavedockerdirectoryname=maria-volumes
+masterdockerdirectoryname=maria-volumes
+masterip=XX.XX.XX.XX
+slaveip=YY.YY.YY.YY
+slaveid=10003
+slaveconsoleprompt=YY.YY.YY.YY
+slavecontainername=YY.YY.YY.YY
+basestodump=base1 base2 base3
+proxyip=ZZ.ZZ.ZZ.ZZ
+proxyport=8888

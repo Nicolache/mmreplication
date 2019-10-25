@@ -1,0 +1,10 @@
+*
+!.gitignore
+!additionalconfig.cnf.j2
+!ansible.cfg
+!docker-compose.yml.j2
+!hosts.example
+!https-proxy.conf.j2
+!masterpos_store.sh.j2
+!RecreateSlave.yml
+!LICENSE

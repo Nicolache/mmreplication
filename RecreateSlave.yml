@@ -17,7 +17,7 @@
       group: root
       mode: 0744
   - name: Block tables for writing, and dump bases.
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "FLUSH TABLES WITH READ LOCK; SYSTEM /root/masterpos_store.sh; SYSTEM mysqldump -u root --databases {{ basestodump }} -p{{ password }} > /root/master_dump.sql; UNLOCK TABLES;"
+    shell: "{{ dockerexecline }} mysql -p{{ password }} -e 'FLUSH TABLES WITH READ LOCK; SYSTEM /root/masterpos_store.sh; SYSTEM mysqldump -u root --databases {{ basestodump }} -p{{ password }} > /root/master_dump.sql; UNLOCK TABLES;'"
 
   - name: Install public key on master.
     environment:
@@ -170,17 +170,17 @@
   gather_facts: no
   tasks:
   - name: Stop slave
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "stop slave;"
+    shell: "{{ dockerexecline }}  mysql -p{{ password }} -e 'stop slave;'"
 
   - name: Display query.
     debug:
       msg: "CHANGE MASTER TO MASTER_HOST = '{{ slaveip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['slave_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['slave_pos']['stdout'] }};"
 
   - name: Set up replication on master.
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "CHANGE MASTER TO MASTER_HOST = '{{ slaveip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['slave_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['slave_pos']['stdout'] }};"
+    shell: "{{ dockerexecline }}  mysql -p{{ password }} -e \"CHANGE MASTER TO MASTER_HOST = '{{ slaveip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['slave_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['slave_pos']['stdout'] }};\""
 
   - name: Start slave
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "start slave;"
+    shell: "{{ dockerexecline }} mysql -p{{ password }} -e 'start slave;'"
 
   - name: Deinstall public key on master.
     environment:

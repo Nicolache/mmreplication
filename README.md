@@ -1,8 +1,8 @@
-# mmreplication - Recreate slave
+# mmreplication
 This playbook is used without any warranty.
 This playbook makes a new slave node from a mysql server in docker, as well as mysql server on bare os. Binlogs must be on on the mysql server. The slave node is created in a docker container only. Actually, it installes a master-master replication, so be careful if your current server is slave also. The replication parameters will be overriden on your server.
 ## Usage. ##
-Change paremeters of the hosts file.
+Copy hosts.example to hosts. Change paremeters of the hosts file.
 
     [masterip]
     XX.XX.XX.XX - your current mysql server ip address here.
@@ -34,10 +34,10 @@ Change paremeters of the hosts file.
 
 Launch it like: ansible-playbook RecreateSlave.yml
 ## Files meaning. ##
-RecreateSlave.yml -- the main playbook.
-hosts -- a file with settings.
-docker-compose.yml.j2 - it is cloned to slaveip=YY.YY.YY.YY, slavedockerdirectoryname=maria-volumes
-additionalconfig.cnf.j2 - place an additional slave mysql server settings here.
-masterpos_store.sh.j2 - it is being started on master and stores masterpos and binlog file name in separate files that is transfered to the slave afrerwards.
-https-proxy.conf.j2 - for placing in /etc/systemd/system/docker.service.d/https-proxy.conf 
+RecreateSlave.yml -- the main playbook.\
+hosts -- a file with settings.\
+docker-compose.yml.j2 - it is cloned to slaveip=YY.YY.YY.YY, slavedockerdirectoryname=maria-volumes\
+additionalconfig.cnf.j2 - place an additional slave mysql server settings here.\
+masterpos_store.sh.j2 - it is being started on master and stores masterpos and binlog file name in separate files that is transfered to the slave afrerwards.\
+https-proxy.conf.j2 - for placing in /etc/systemd/system/docker.service.d/https-proxy.conf \
 ansible.cfg - this file is not to write ansible settings in /etc/ansible directory. Everything is working from the playbook's directory.

@@ -9,15 +9,17 @@
 - hosts: masterip
   gather_facts: no
   tasks:
+
   - name: Copy sh script.
     template:
       src: masterpos_store.sh.j2
-      dest: /root/{{ masterdockerdirectoryname }}/root/masterpos_store.sh
+      dest: "{{ masterdockerdirectoryname }}/root/masterpos_store.sh"
       owner: root
       group: root
       mode: 0744
+
   - name: Block tables for writing, and dump bases.
-    shell: "{{ dockerexecline }} mysql -p{{ password }} -e 'FLUSH TABLES WITH READ LOCK; SYSTEM /root/masterpos_store.sh; SYSTEM mysqldump -u root --databases {{ basestodump }} -p{{ password }} > /root/master_dump.sql; UNLOCK TABLES;'"
+    shell: "{{ dockerexecline }} mysql {{ password }} -e 'FLUSH TABLES WITH READ LOCK; SYSTEM /root/masterpos_store.sh; SYSTEM mysqldump -u root --databases {{ basestodump }} {{ password }} > /root/master_dump.sql; UNLOCK TABLES;'"
 
   - name: Install public key on master.
     environment:
@@ -30,6 +32,29 @@
 - hosts: slaveip
   gather_facts: no
   tasks:
+  - name: Old container stop.
+    shell: docker stop `docker ps -q`
+  - name: Old container delete.
+    shell: yes y | docker container prune
+  - name: Old direcroty delete.
+    file:
+      state: absent
+      path: "/root/{{ slavedockerdirectoryname }}/" 
+
+  - name: Install pymysql.
+    apt:
+      name: python-pymysql
+      state: present
+      update_cache: yes
+
+#  - name: python-pip install.
+#    apt:
+#      name: python-pip
+#      state: present
+
+#  - name: Install docker-py.
+#    shell: pip install python-docker
+
   - name: Create docker mariadb mounting volumes directory.
     file:
       path: /root/{{ slavedockerdirectoryname }}
@@ -70,15 +95,22 @@
       owner: root
       group: root
       mode: 0644
+  - name: Copy mysql credentials.
+    template:
+      src: .my.cnf.j2
+      dest: /root/{{ slavedockerdirectoryname }}/root/.my.cnf
+      owner: root
+      group: root
+      mode: 0644
 
   - name: Add host to known_hosts.
     shell: ssh-keyscan -H {{ masterip }} >> ~/.ssh/known_hosts
   - name: Copy database from the master host.
-    shell: scp -r root@{{ masterip }}:/root/{{ masterdockerdirectoryname }}/root/master_dump.sql /root/{{ slavedockerdirectoryname }}/root
+    shell: scp -r root@{{ masterip }}:{{ masterdockerdirectoryname }}/root/master_dump.sql /root/{{ slavedockerdirectoryname }}/root
   - name: Copy pos file.
-    shell: scp -r root@{{ masterip }}:/root/{{ masterdockerdirectoryname }}/root/pos.txt /root/{{ slavedockerdirectoryname }}/root
+    shell: scp -r root@{{ masterip }}:{{ masterdockerdirectoryname }}/root/pos.txt /root/{{ slavedockerdirectoryname }}/root
   - name: Copy master binlog name file.
-    shell: scp -r root@{{ masterip }}:/root/{{ masterdockerdirectoryname }}/root/file.txt /root/{{ slavedockerdirectoryname }}/root
+    shell: scp -r root@{{ masterip }}:{{ masterdockerdirectoryname }}/root/file.txt /root/{{ slavedockerdirectoryname }}/root
 
   - name: Copy docker-compose.yml template.
     template:
@@ -110,18 +142,27 @@
   - name: Reload docker.
     shell: systemctl restart docker
 
-  - name: run the service defined in my_project's docker-compose.yml
+  - name: run container
     docker_compose:
       project_src: /root/{{ slavedockerdirectoryname }}
 
   - pause:
-      seconds: 15
+      seconds: 20
 
-  - name: Alter.
-    shell: docker exec -ti $(docker ps -q) mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ password }}';"
+#  - name: Alter.
+#    shell: docker exec -ti $(docker ps -q) mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ purepassword }}';"
+
+  - name: Set root user password
+    mysql_user: name=root
+                host="{{ slaveip }}"
+                password="{{ purepassword }}"
+                check_implicit_admin=yes
+                login_user="root"
+                login_password="{{ password }}"
+                state=present
 
   - name: Upload the base.
-    shell: docker exec -ti $(docker ps -q) sh -c 'mysql -p{{ password }} < /root/master_dump.sql'
+    shell: docker exec -ti $(docker ps -q) sh -c 'mysql {{ password }} < /root/master_dump.sql'
 
   - name: Findout master position.
     shell: cat /root/maria-volumes/root/pos.txt
@@ -131,21 +172,26 @@
     shell: cat /root/maria-volumes/root/file.txt
     register: master_file
 
+#  - pause:
+#      seconds: 15
+
+  - name: Replication user.
+    mysql_user:
+      name: replicator
+      host: "{{ masterip }}"
+      password: "{{ replicationpassword }}"
+      priv: "*.*:REPLICATION SLAVE"
+      state: present
+
   - name: Display query.
     debug:
-      msg: "CHANGE MASTER TO MASTER_HOST = '{{ masterip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['master_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['master_pos']['stdout'] }};"
-
-  - name: Create replication user.
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "CREATE USER '{{ replicationuser }}'@'%' IDENTIFIED BY '{{ replicationpassword }}';"
-
-  - name: Grant privileges.
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "grant replication slave on *.* to '{{ replicationuser }}'@'%';"
+      msg: "CHANGE MASTER TO MASTER_HOST = '{{ masterip }}', MASTER_USER = '{{ replicationuser }}', MASTER_PASSWORD = '{{ replicationpassword }}', MASTER_LOG_FILE = '{{ hostvars[slaveip]['master_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['master_pos']['stdout'] }};"
 
   - name: Set up replication.
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "CHANGE MASTER TO MASTER_HOST = '{{ masterip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['master_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['master_pos']['stdout'] }};"
+    shell: docker exec -ti $(docker ps -q) mysql {{ password }} -e "CHANGE MASTER TO MASTER_HOST = '{{ masterip }}', MASTER_USER = '{{ replicationuser }}', MASTER_PASSWORD = '{{ replicationpassword }}', MASTER_LOG_FILE = '{{ hostvars[slaveip]['master_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['master_pos']['stdout'] }};"
 
   - name: Start slave
-    shell: docker exec -ti $(docker ps -q) mysql -p{{ password }} -e "start slave;"
+    shell: docker exec -ti $(docker ps -q) mysql {{ password }} -e "start slave;"
 
   - name: Copy sh script to slave.
     template:
@@ -170,17 +216,17 @@
   gather_facts: no
   tasks:
   - name: Stop slave
-    shell: "{{ dockerexecline }}  mysql -p{{ password }} -e 'stop slave;'"
+    shell: "{{ dockerexecline }}  mysql {{ password }} -e 'stop slave;'"
 
   - name: Display query.
     debug:
-      msg: "CHANGE MASTER TO MASTER_HOST = '{{ slaveip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['slave_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['slave_pos']['stdout'] }};"
+      msg: "CHANGE MASTER TO MASTER_HOST = '{{ slaveip }}', MASTER_USER = '{{ replicationuser }}', MASTER_PASSWORD = '{{ replicationpassword }}', MASTER_LOG_FILE = '{{ hostvars[slaveip]['slave_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['slave_pos']['stdout'] }};"
 
   - name: Set up replication on master.
-    shell: "{{ dockerexecline }}  mysql -p{{ password }} -e \"CHANGE MASTER TO MASTER_HOST = '{{ slaveip }}', MASTER_USER = 'replicator', MASTER_PASSWORD = 'password', MASTER_LOG_FILE = '{{ hostvars[slaveip]['slave_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['slave_pos']['stdout'] }};\""
+    shell: "{{ dockerexecline }}  mysql {{ password }} -e \"CHANGE MASTER TO MASTER_HOST = '{{ slaveip }}', MASTER_USER = '{{ replicationuser }}', MASTER_PASSWORD = '{{ replicationpassword }}', MASTER_LOG_FILE = '{{ hostvars[slaveip]['slave_file']['stdout'] }}', MASTER_LOG_POS = {{ hostvars[slaveip]['slave_pos']['stdout'] }};\""
 
   - name: Start slave
-    shell: "{{ dockerexecline }} mysql -p{{ password }} -e 'start slave;'"
+    shell: "{{ dockerexecline }} mysql {{ password }} -e 'start slave;'"
 
   - name: Deinstall public key on master.
     environment:

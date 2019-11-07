@@ -1,2 +1,2 @@
-mysql -p{{ password }} -e "show master status\G;" | grep Position | awk '{ print $2 }' > /root/pos.txt
-mysql -p{{ password }} -e "show master status\G;" | grep File | awk '{ print $2 }' > /root/file.txt
+mysql {{ password }} -e "show master status\G;" | grep Position | awk '{ print $2 }' > /root/pos.txt
+mysql {{ password }} -e "show master status\G;" | grep File | awk '{ print $2 }' > /root/file.txt

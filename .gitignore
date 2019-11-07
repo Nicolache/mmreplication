@@ -1,4 +1,5 @@
 *
+!README.md
 !.gitignore
 !additionalconfig.cnf.j2
 !ansible.cfg

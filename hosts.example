@@ -1,3 +1,9 @@
+#You need to ensure binlogs are enabled on your current master.
+#Findout replication password, and set replicationpassword variable in this file.
+#Also, findout and set every other variable in this file.
+#"password" variable contains a console mysql password prefix -p, and password itself.
+#"purepassword" is the same without prefix.
+#If you use no password for console login into mysql, purepassword and password should be "".
 [masterip]
 XX.XX.XX.XX
 [slaveip]
@@ -8,16 +14,20 @@ masterip
 slaveip
 
 [replication:vars]
-password=1
+#password=-p1
+purepassword=""
+password=""
 replicationuser=replicator
-replicationpassword=password
+replicationpassword=123
 slavedockerdirectoryname=maria-volumes
-masterdockerdirectoryname=maria-volumes
+masterdockerdirectoryname=""
 masterip=XX.XX.XX.XX
 slaveip=YY.YY.YY.YY
 slaveid=10003
 slaveconsoleprompt=YY.YY.YY.YY
 slavecontainername=YY.YY.YY.YY
 basestodump=base1 base2 base3
+#dockerexecline=docker exec -ti $(docker ps -q)
+dockerexecline=""
 proxyip=ZZ.ZZ.ZZ.ZZ
 proxyport=8888

@@ -38,6 +38,6 @@ RecreateSlave.yml -- the main playbook.\
 hosts -- a file with settings.\
 docker-compose.yml.j2 - it is cloned to slaveip=YY.YY.YY.YY, slavedockerdirectoryname=maria-volumes\
 additionalconfig.cnf.j2 - place an additional slave mysql server settings here.\
-masterpos_store.sh.j2 - it is being started on master and stores masterpos and binlog file name in separate files that is transfered to the slave afrerwards.\
+masterpos_store.sh.j2 - it is being started on master and stores masterpos and binlog file name in separate files that are transfered to the slave afrerwards.\
 https-proxy.conf.j2 - for placing in /etc/systemd/system/docker.service.d/https-proxy.conf \
 ansible.cfg - this file is not to write ansible settings in /etc/ansible directory. Everything is working from the playbook's directory.
